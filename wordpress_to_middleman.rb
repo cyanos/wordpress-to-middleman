@@ -5,7 +5,7 @@
 require 'rubygems'
 require 'nokogiri' 
 require 'upmark'   
-require 'html2md'
+require 'reverse_markdown'
 require 'time'
 require 'fileutils'
 
@@ -13,15 +13,15 @@ require 'fileutils'
 WORDPRESS_XML_FILE_PATH = "#{ENV['PWD']}/wordpress.xml"  # THE LOCATION OF THE EXPORTED WORDPRESS ARCHIVE #
 OUTPUT_PATH = "#{ENV['PWD']}/export/_posts/"  # THE LOCATION OF THE SAVED POSTS #
 ORIGINAL_DOMAIN = "http://perpetuallybeta.com"  #  THE DOMAIN OF THE WEBSITE #
-SEPARATE_CATEGORIES_FROM_TAGS = false
-CONVERT_FROM_HTML = false
+SEPARATE_CATEGORIES_FROM_TAGS = true
+CONVERT_FROM_HTML = true
 
 class Parser
 
 	def self.make_output_path
 		unless File.directory?(OUTPUT_PATH)
-    		FileUtils.mkdir_p(OUTPUT_PATH)
-    		puts "Saving all files in" + OUTPUT_PATH.to_s
+			FileUtils.mkdir_p(OUTPUT_PATH)
+			puts "Saving all files in" + OUTPUT_PATH.to_s
 		end
 	end
 
@@ -75,14 +75,39 @@ class Parser
 
 			# do a crude test for html tags
 			if CONVERT_FROM_HTML && /</ =~ content && />/ =~ content
+
+        html_content = Nokogiri::HTML content
+        html_content.xpath("//blockquote").each do |bkqt|
+          bkqt.content = bkqt.text.gsub(/(\r?\n)/, "YYYYYYYY")
+        end
+        content = html_content.to_s
+
 				content.gsub!(/(\r?\n\r?\n)/, "XXXXXXXXXX") # preserve double newline as token
-				content.gsub!(/\n(<.+>)/, "<br><br>\\1") # add newline before html tags
-				md_content = Html2Md.new(content)
-				content = md_content.parse
+        content.gsub!(/\n(<.+>)/, "<br><br>\\1") # add newline before html tags
+        content.gsub!(/([^>])\s*\n\s*([^<])/, "\\1<br>\\2")
+        content.gsub!(/(<\/blockquote>)\n\s*/, "</blockquote><br><br>") # add newline after blockquote tags
+        # content.gsub!(/<([a-z]+)(?:[^<]+)*>(\s*)([^\s]*)(\s*)<\/\1>/, "\\3<\\1>\\<\/\\1>\\4")
+        content.gsub!(/(<\/sup>)/, "-ZZZZZZZ")
+        content.gsub!(/(<sup>)/, "ZZZZZZZ")
+
+
+				content = ReverseMarkdown.convert content, unknown_tags: :bypass
 				content.gsub!(/(XXXXXXXXXX)+/, "\n\n") # remove token and replace with double newline
+        content.gsub!(/YYYYYYYY/, "\n> ") # blockquotes
+        content.gsub!(/ZZZZZZZ/, "<sup>")# sup
+        content.gsub!(/-ZZZZZZZ/, "</sup>")# sup
+
+        content.gsub!(/\n \*\*/, "\n**") # fix the <strong> bug
+        content.gsub!(/\*\* ([\.,;])/, "**\\1") # fix the <strong> bug
+
+        content.gsub!(/(#+) ([\w &\-,'\.]+)\s*$/, "\\1 \\2 \\1")
+
 			end
 
+
+      content.gsub!(/[ ]{2,}/, " ") # collapse multiple spaces
 			content.gsub! /\n\s*\n/, "\n\n" # collapse newlines
+
 
 			if !(created_at.nil? || title.nil? || post_date.nil? || content.nil?)
 				output_filename = OUTPUT_PATH + created_at + "-" + sanitize_filename(title) + ".markdown"

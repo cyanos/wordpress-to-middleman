@@ -3,4 +3,4 @@ source "https://rubygems.org"
 
 gem "nokogiri"
 gem "upmark"
-gem "html2md"
+gem "reverse_markdown"
